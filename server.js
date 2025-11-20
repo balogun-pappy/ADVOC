@@ -291,4 +291,7 @@ app.post("/dm/:user1/:user2", (req, res) => {
 // -------------------------
 // Start Server
 // -------------------------
-app.listen(1998, () => console.log("Server running on http://localhost:1998"));
+app.listen(process.env.PORT || 1998, () => {
+    console.log("Server running...");
+});
+
