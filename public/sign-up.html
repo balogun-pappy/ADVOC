@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - ADVOC</title>
+    <style>
+        body {
+            background: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
+            text-align: center;
+            width: 350px;
+        }
+        input {
+            width: 80%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+        }
+        button {
+            width: 85%;
+            padding: 10px;
+            border-radius: 25px;
+            border: none;
+            background-color: #1877f2;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #145dbf;
+        }
+        .error { color: red; }
+        .link { margin-top: 10px; display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Sign Up</h2>
+        <div id="error" class="error"></div>
+        <form id="signupForm">
+            <input type="text" name="username" placeholder="Username" required><br>
+            <input type="password" name="password" placeholder="Password" required><br>
+            <input type="text" name="phone" placeholder="Phone Number" required><br>
+            <button type="submit">Sign Up</button>
+        </form>
+        <a class="link" href="login.html">Already have an account? Login</a>
+    </div>
+
+    <script>
+        document.getElementById("signupForm").onsubmit = async function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const body = {
+                username: formData.get("username"),
+                password: formData.get("password"),
+                phone: formData.get("phone")
+            };
+
+        const res = await fetch("/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include"   // ← ADD THIS
+});
+
+
+            const data = await res.json();
+
+            if (data.success) {
+                alert("Signup successful! Please login.");
+                window.location.href = "login.html";
+            } else {
+                document.getElementById("error").innerText = data.message;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADVOC Modern</title>
+<style>
+body { background:#f0f2f5; font-family:'Segoe UI', sans-serif; margin:0; padding:0; color:#333; }
+.navbar { background:#fff; display:flex; align-items:center; padding:10px 20px; border-bottom:1px solid #ddd; }
+.navbar input { flex:1; padding:8px; margin-left:10px; border-radius:20px; border:1px solid #ccc; }
+.navbar button { margin-left:10px; padding:10px 20px; border:none; border-radius:25px; cursor:pointer; background:#1877f2; color:#fff; }
+.navbar button:hover { background:#145dbf; }
+
+.gallery { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:20px; padding:20px; max-width:1200px; margin:auto; }
+.media-card { background:#fff; border-radius:15px; padding:15px; box-shadow:0 4px 12px rgba(0,0,0,0.1); position:relative; }
+.media-card img, .media-card video { width:100%; border-radius:15px; margin-bottom:10px; cursor:pointer; }
+.caption { font-weight:bold; margin-bottom:10px; }
+.user-info { display:flex; align-items:center; margin-bottom:10px; cursor:pointer; }
+.user-info img { width:40px; height:40px; border-radius:50%; margin-right:10px; border:2px solid #1877f2; }
+.username { font-weight:bold; margin-right:10px; }
+.dm-btn { padding:3px 8px; border:none; border-radius:12px; background:#42b72a; color:#fff; cursor:pointer; font-size:12px; }
+.dm-btn:hover { background:#36921f; }
+
+.like-btn, .comment-btn { position:absolute; right:15px; font-size:22px; cursor:pointer; color:#fff; text-shadow:0 0 5px #000; }
+.like-btn.liked { color:#ff2d55; transform:scale(1.3); }
+
+#fullscreenModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); justify-content:center; align-items:center; z-index:10000; }
+#fullscreenModal img, #fullscreenModal video { max-width:90%; max-height:90%; }
+
+.comment-panel { position:fixed; bottom:-100%; left:0; width:100%; max-height:60%; background:#fff; border-top-left-radius:15px; border-top-right-radius:15px; transition:bottom 0.3s; overflow-y:auto; padding:20px; z-index:1000; }
+.comment-panel.active { bottom:0; }
+.comment-panel h3 { margin-top:0; display:flex; justify-content:space-between; align-items:center; }
+.comment-list div { margin-bottom:10px; padding:5px 10px; border-radius:10px; background:#f1f1f1; }
+.comment-form { display:flex; margin-top:10px; }
+.comment-form input { flex:1; padding:10px; border-radius:20px; border:1px solid #ddd; margin-right:5px; }
+.comment-form button { border-radius:20px; border:none; padding:10px 15px; background:#1877f2; color:#fff; cursor:pointer; }
+.comment-form button#cancelComment { background:#aaa; margin-left:5px; }
+
+.upload-form { background:#fff; border-radius:10px; padding:40px; max-width:550px; margin:40px auto; box-shadow:0px 8px 16px rgba(0,0,0,0.2); text-align:center; }
+.upload-form input[type="file"], .upload-form input[type="text"] { margin-bottom:10px; padding:10px; border-radius:10px; border:1px solid #ccc; width:80%; }
+.upload-form button { border:none; border-radius:25px; padding:10px 20px; background:#42b72a; color:#fff; cursor:pointer; margin-top:10px; }
+.upload-form button:hover { background:#36921f; }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+    <a href="business.html"><button>BUSINESS</button></a>
+   <a href="sign-up.html"> <button id="btnSignup">SIGN UP</button></a>
+    <a href="login.html"><button id="btnLogin">LOGIN</button></a>
+    <input type="text" id="searchBar" placeholder="Search media..." />
+</div>
+
+<div class="upload-form" id="uploadSection" style="display:none;">
+    <h2>Upload Image/Video</h2>
+    <form id="uploadForm">
+        <input type="file" name="media" accept="image/*,video/*" required><br>
+        <input type="text" name="caption" placeholder="Write something..."><br>
+        <button type="submit">Upload</button>
+    </form>
+</div>
+
+<h2 style="text-align:center;">Media Gallery</h2>
+<div class="gallery" id="gallery"></div>
+
+<!-- Fullscreen modal -->
+<div id="fullscreenModal" onclick="this.style.display='none'">
+    <img id="fullscreenMedia" src="">
+</div>
+
+<!-- Comments panel -->
+<div class="comment-panel" id="commentPanel">
+    <h3>Comments <span id="commentCount">0</span></h3>
+    <div class="comment-list" id="commentList"></div>
+    <form class="comment-form" id="commentForm">
+        <input type="text" name="text" placeholder="Add a comment..." required>
+        <button type="submit">Send</button>
+        <button type="button" id="cancelComment">Cancel</button>
+    </form>
+</div>
+
+<script>
+let allMedia = [];
+let loggedInUser = null;
+let currentMedia = null;
+
+// Check auth
+fetch("/auth-check").then(res => res.json()).then(data => {
+    if(data.loggedIn){
+        loggedInUser = data.username;
+        document.getElementById("uploadSection").style.display = "block";
+    }
+});
+
+// Load gallery
+function loadGallery(){
+    fetch("/images")
+    .then(res=>res.json())
+    .then(media=>{
+        allMedia = media;
+        renderGallery(media);
+    });
+}
+
+// Render media
+function renderGallery(media){
+    const gallery = document.getElementById("gallery");
+    gallery.innerHTML = "";
+    media.forEach(item=>{
+        const card = document.createElement("div");
+        card.className="media-card";
+
+        // User info
+        const userDiv = document.createElement("div");
+        userDiv.className="user-info";
+        const profilePic = document.createElement("img");
+        profilePic.src = "/profile_pics/"+(item.userProfile || "default.png");
+        const usernameSpan = document.createElement("span");
+        usernameSpan.className="username";
+        usernameSpan.textContent = item.user;
+        usernameSpan.onclick = ()=>openProfile(item.user);
+
+        const dmBtn = document.createElement("button");
+        dmBtn.className="dm-btn";
+        dmBtn.textContent = "DM";
+        dmBtn.onclick = (e)=>{ e.stopPropagation(); alert("Open DM with "+item.user+" (to be implemented)"); };
+
+        userDiv.appendChild(profilePic);
+        userDiv.appendChild(usernameSpan);
+        userDiv.appendChild(dmBtn);
+        card.appendChild(userDiv);
+
+        // Media
+        if(item.type==="video"){
+            const vid = document.createElement("video");
+            vid.src="/uploads/"+item.filename;
+            vid.controls = true;
+            vid.onclick=()=>openFullscreen("/uploads/"+item.filename,item.type);
+            card.appendChild(vid);
+        }else{
+            const img=document.createElement("img");
+            img.src="/uploads/"+item.filename;
+            img.onclick=()=>openFullscreen("/uploads/"+item.filename,item.type);
+            card.appendChild(img);
+        }
+
+        // Caption
+        if(item.caption){
+            const cap = document.createElement("p");
+            cap.className="caption";
+            cap.textContent=item.caption;
+            card.appendChild(cap);
+        }
+
+        // Like button
+        const likeBtn=document.createElement("div");
+        likeBtn.className="like-btn";
+        likeBtn.style.bottom="50px";
+        likeBtn.innerHTML="❤ "+item.likes;
+        likeBtn.onclick=()=>likeMedia(item.filename,likeBtn);
+        card.appendChild(likeBtn);
+
+        // Comment button
+        const commentBtn = document.createElement("div");
+        commentBtn.className="comment-btn";
+        commentBtn.style.bottom="15px";
+        commentBtn.innerHTML = "💬 " + (item.comments?.length || 0);
+        commentBtn.onclick = (e)=>{
+            e.stopPropagation();
+            openComments(item.filename, commentBtn);
+        };
+        card.appendChild(commentBtn);
+
+        gallery.appendChild(card);
+    });
+}
+
+// Open fullscreen
+function openFullscreen(src,type){
+    const modal=document.getElementById("fullscreenModal");
+    const media=document.getElementById("fullscreenMedia");
+    if(type==="video"){
+        media.outerHTML=`<video id="fullscreenMedia" src="${src}" controls autoplay style="max-width:90%; max-height:90%;"></video>`;
+    }else{
+        media.outerHTML=`<img id="fullscreenMedia" src="${src}" style="max-width:90%; max-height:90%;">`;
+    }
+    modal.style.display="flex";
+}
+
+// Like
+function likeMedia(filename,btn){
+    fetch("/like/"+filename,{method:"POST"}).then(res=>res.json()).then(data=>{
+        btn.innerHTML="❤ "+data.likes;
+        btn.classList.add("liked");
+        setTimeout(()=>btn.classList.remove("liked"),300);
+    });
+}
+
+// Open profile page
+function openProfile(username){
+    window.location.href="/profile.html?user="+username;
+}
+
+// Upload
+document.getElementById("uploadForm").onsubmit=function(e){
+    e.preventDefault();
+    const formData=new FormData(this);
+    fetch("/upload",{method:"POST",body:formData}).then(res=>res.json()).then(data=>{
+        if(data.success){ loadGallery(); this.reset(); }
+        else alert(data.message);
+    });
+};
+
+// Search
+document.getElementById("searchBar").addEventListener("input",function(){
+    const query=this.value.toLowerCase();
+    renderGallery(allMedia.filter(m=>(m.caption||"").toLowerCase().includes(query)));
+});
+
+// -----------------
+// Comments panel
+// -----------------
+function openComments(filename, commentBtn){
+    currentMedia = filename;
+    document.getElementById("commentPanel").classList.add("active");
+    loadComments(filename, commentBtn);
+}
+
+function loadComments(filename, commentBtn){
+    fetch("/comments/" + filename)
+        .then(res => res.json())
+        .then(data => {
+            const list = document.getElementById("commentList");
+            list.innerHTML = "";
+            data.forEach(c => {
+                const div = document.createElement("div");
+                div.innerHTML = `<strong>${c.user}</strong>: ${c.text}`;
+                list.appendChild(div);
+            });
+            // Update count
+            document.getElementById("commentCount").textContent = data.length;
+            if(commentBtn) commentBtn.innerHTML = "💬 " + data.length;
+        });
+}
+
+document.getElementById("commentForm").onsubmit = function(e){
+    e.preventDefault();
+    if(!currentMedia) return;
+
+    const textInput = this.querySelector('input[name="text"]');
+    const text = textInput.value.trim();
+    if(!text) return;
+
+    fetch("/comments/" + currentMedia, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ text })
+    }).then(res => res.json())
+      .then(data => {
+          if(data.success){
+              textInput.value = "";
+              loadComments(currentMedia);
+              loadGallery(); // refresh comment counts
+          } else {
+              alert(data.message || "Failed to post comment");
+          }
+      });
+};
+
+// Cancel comment button
+document.getElementById("cancelComment").onclick = function(){
+    document.getElementById("commentForm").reset();
+    document.getElementById("commentPanel").classList.remove("active");
+    currentMedia = null;
+};
+
+// Close comment panel on clicking outside
+document.getElementById("commentPanel").addEventListener("click", e=>{
+    if(e.target===document.getElementById("commentPanel")){
+        document.getElementById("commentPanel").classList.remove("active");
+        currentMedia = null;
+    }
+});
+
+loadGallery();
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ADVOC</title>
+    <style>
+        body {
+            background: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        .div-1 {
+            background: #ffffff;
+            width: 100%;
+            height: 80px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .div-1 button {
+            border-radius: 25px;
+            border: none;
+            background-color: #1877f2;
+            color: white;
+            padding: 10px 20px;
+            margin-right: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .div-1 button:hover {
+            transform: translateY(-2px);
+            background-color: #145dbf;
+        }
+
+        h2 {
+            text-align: center;
+            margin-top: 30px;
+            font-weight: 600;
+            color: #444;
+        }
+
+        form {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .button-5, .button {
+            border-radius: 25px;
+            border: none;
+            padding: 10px 20px;
+            margin-left: 10px;
+            cursor: pointer;
+            background-color: #42b72a;
+            color: white;
+            font-weight: bold;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .button-5:hover, .button:hover {
+            transform: translateY(-2px);
+            background-color: #36921f;
+        }
+
+        #gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .image-container {
+            background: #ffffff;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+        }
+
+        .image-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        .image-container img {
+            width: 100%;
+            border-radius: 15px;
+            margin-bottom: 10px;
+        }
+
+        .caption {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .like-btn {
+            position: absolute;
+            right: 15px;
+            bottom: 60px;
+            font-size: 28px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            color: #fff;
+            text-shadow: 0 0 5px #000;
+        }
+
+        .like-btn.liked {
+            color: #ff2d55;
+            transform: scale(1.3);
+        }
+
+        .comment-panel {
+            position: fixed;
+            bottom: -100%;
+            left: 0;
+            width: 100%;
+            max-height: 60%;
+            background: #fff;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.2);
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
+            transition: bottom 0.3s ease;
+            overflow-y: auto;
+            padding: 20px;
+            z-index: 1000;
+        }
+
+        .comment-panel.active {
+            bottom: 0;
+        }
+
+        .comment-panel h3 {
+            margin-top: 0;
+        }
+
+        .comment-list div {
+            margin-bottom: 10px;
+        }
+
+        .comment-form input {
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid #ddd;
+            margin-right: 5px;
+            width: 45%;
+        }
+
+        .comment-form button {
+            border-radius: 12px;
+            border: none;
+            padding: 8px 12px;
+            background-color: #1877f2;
+            color: white;
+            cursor: pointer;
+        }
+
+        .div-9{
+            position: inherit;
+            text-align: center;
+            border-radius: 10px;
+            background: white;
+            border: 1px solid whitesmoke;
+            padding: 40px;
+            width: 550px;
+            margin: 90px auto 0 auto;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+        }
+        .input-6{
+            border-radius: 20px;
+            height: 40px;
+            width: 500px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            border: 1px solid whitesmoke;
+            text-align: center;
+            padding: 10px;
+            
+
+        }
+    </style>
+</head>
+<body>
+
+
+<div class="div-1">
+    <a href="#"><button>GAMES</button></a>
+    <a href="business.html"><button>BUSINESS</button></a>
+    <button>SIGN UP</button>
+    <button>LOGIN</button>
+    <input type="text" id="searchBar"  class="input-6" placeholder="Search images..." />
+
+</div>
+
+<div class="div-9">
+<h2>Upload an Image</h2>
+<form action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="image" class="button-5" required>
+    <input type="text" name="caption" placeholder="Write something about your picture..." style="padding:10px; border-radius:10px; border:1px solid #ccc; margin-left:10px; width:250px;">
+    <button type="submit" class="button">Upload</button>
+</form>
+</div>
+
+<h2>Uploaded Images And Tap On Image To Comment</h2>
+<div id="gallery"></div>
+
+<div class="comment-panel" id="commentPanel">
+    <h3>Comments</h3>
+    <div class="comment-list" id="commentList"></div>
+    <form class="comment-form" id="commentForm">
+        <input type="text" name="user" placeholder="Your name" required>
+        <input type="text" name="text" placeholder="Comment" required>
+        <button type="submit">Add Comment</button>
+        <button type="button" id="cancelComment">Cancel</button>
+    </form>
+</div>
+
+<script>
+let allImages = []; 
+let currentImage = '';
+
+// Load gallery
+function loadGallery() {
+    fetch('/images')
+    .then(res => res.json())
+    .then(images => {
+        allImages = images;
+        renderGallery(images);
+    });
+}
+
+// Render images
+function renderGallery(images) {
+    const gallery = document.getElementById("gallery");
+    gallery.innerHTML = "";
+
+    images.forEach(img => {
+        const container = document.createElement("div");
+        container.className = "image-container";
+
+        const imageEl = document.createElement("img");
+        imageEl.src = "/uploads/" + img.filename;
+        container.appendChild(imageEl);
+
+        if (img.caption) {
+            const cap = document.createElement("p");
+            cap.className = "caption";
+            cap.textContent = img.caption;
+            container.appendChild(cap);
+        }
+
+        const likeBtn = document.createElement("div");
+        likeBtn.className = "like-btn";
+        likeBtn.innerHTML = `&#10084; ${img.likes}`;
+        likeBtn.onclick = () => {
+            fetch(`/like/${img.filename}`, { method: "POST" })
+            .then(res => res.json())
+            .then(data => {
+                likeBtn.innerHTML = `&#10084; ${data.likes}`;
+                likeBtn.classList.add('liked');
+                setTimeout(() => likeBtn.classList.remove('liked'), 300);
+            });
+        };
+        container.appendChild(likeBtn);
+
+        imageEl.onclick = () => openComments(img.filename);
+
+        gallery.appendChild(container);
+    });
+}
+
+// Search filter
+document.getElementById("searchBar").addEventListener("input", function() {
+    const query = this.value.toLowerCase();
+    const filtered = allImages.filter(img => (img.caption || '').toLowerCase().includes(query));
+    renderGallery(filtered);
+});
+
+// Open comments
+function openComments(filename) {
+    currentImage = filename;
+    const panel = document.getElementById('commentPanel');
+    const list = document.getElementById('commentList');
+
+    fetch(`/images`)
+    .then(res => res.json())
+    .then(images => {
+        const img = images.find(i => i.filename === filename);
+        list.innerHTML = '';
+        img.comments.forEach(c => {
+            const div = document.createElement('div');
+            div.textContent = `${c.user}: ${c.text}`;
+            list.appendChild(div);
+        });
+    });
+
+    panel.classList.add('active');
+}
+
+// Comment submission
+document.getElementById('commentForm').onsubmit = function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const body = { user: formData.get('user'), text: formData.get('text') };
+
+    fetch(`/comment/${currentImage}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    })
+    .then(res => res.json())
+    .then(data => {
+        const list = document.getElementById('commentList');
+        list.innerHTML = '';
+        data.comments.forEach(c => {
+            const div = document.createElement('div');
+            div.textContent = `${c.user}: ${c.text}`;
+            list.appendChild(div);
+        });
+        document.getElementById('commentForm').reset();
+    });
+};
+
+// Cancel comment panel
+document.getElementById('cancelComment').onclick = () => {
+    document.getElementById('commentPanel').classList.remove('active');
+};
+
+loadGallery();
+</script>
+
+</body>
+</html>
+-->
+
+
+<!--<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Upload Site</title>
+    <style>
+        /* Global Styles */
+        body {
+            background: #f0f2f5; /* light gray Instagram-like background */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        /* Header */
+        .div-1 {
+            background: #ffffff;
+            width: 100%;
+            height: 80px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .div-1 button {
+            border-radius: 25px;
+            border: none;
+            background-color: #1877f2; /* blue like Instagram buttons */
+            color: white;
+            padding: 10px 20px;
+            margin-right: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .div-1 button:hover {
+            transform: translateY(-2px);
+            background-color: #145dbf;
+        }
+
+        /* Upload Section */
+        h2 {
+            text-align: center;
+            margin-top: 30px;
+            font-weight: 600;
+            color: #444;
+        }
+
+        
+
+        form {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .button-5, .button {
+            border-radius: 25px;
+            border: none;
+            padding: 10px 20px;
+            margin-left: 10px;
+            cursor: pointer;
+            background-color: #42b72a; /* green submit button */
+            color: white;
+            font-weight: bold;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .button-5:hover, .button:hover {
+            transform: translateY(-2px);
+            background-color: #36921f;
+        }
+
+        /* Gallery */
+        #gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .image-container {
+            background: #ffffff;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .image-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        .image-container img {
+            width: 100%;
+            border-radius: 15px;
+            margin-bottom: 10px;
+        }
+
+        .image-container button {
+            border-radius: 20px;
+            border: none;
+            background-color: #ff4757; /* pinkish like Instagram */
+            color: white;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .image-container button:hover {
+            transform: translateY(-2px);
+            background-color: #e8414b;
+        }
+
+        .comments {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .comment-form input {
+            padding: 5px 8px;
+            border-radius: 12px;
+            border: 1px solid #ddd;
+            margin-right: 5px;
+            width: 60%;
+        }
+
+        .comment-form button {
+            border-radius: 12px;
+            border: none;
+            padding: 5px 10px;
+            background-color: #1877f2;
+            color: white;
+            cursor: pointer;
+        }
+
+        .comment-form button:hover {
+            background-color: #145dbf;
+        }
+
+        
+        #customBtn {
+    border-radius: 25px;
+    border: none;
+    background-color: #1877f2;
+    color: white;
+    padding: 10px 20px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+}
+
+#customBtn:hover {
+    transform: translateY(-2px);
+    background-color: #145dbf;
+}
+
+#fileNames {
+    font-style: italic;
+    color: #555;
+}
+
+
+        
+    </style>
+</head>
+<body>
+
+    <div class="div-1">
+        <a href="#"><button class="button-1">GAMES</button></a>
+       <a href="business.html"> <button class="button-2">BUSINESS</button></a>
+        <button class="button-3">SIGN UP</button>
+        <button class="button-4">LOGIN</button>
+    </div>
+
+    <!--
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+     
+    <input type="file" name="image" id="fileInput" style="display:none;" multiple>
+
+    
+    <button type="button" id="customBtn" class="button-5">Choose File</button>
+    <button type="submit" class="button">Upload</button>
+
+     
+    <span id="fileNames" style="margin-left:10px;"></span>
+</form>-->
+
+<!--
+
+    <h2>Upload an Image</h2>
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" class="button-5" multiple>
+        <button type="submit" class="button">Upload</button>
+    </form>
+
+    <h2>Uploaded Images</h2>
+    <div id="gallery"></div>
+
+    <script>
+        function loadGallery() {
+            fetch('/images')
+            .then(res => res.json())
+            .then(images => {
+                const gallery = document.getElementById("gallery");
+                gallery.innerHTML = "";
+
+                images.forEach(img => {
+                    const container = document.createElement("div");
+                    container.className = "image-container";
+
+                    const imageEl = document.createElement("img");
+                    imageEl.src = "/uploads/" + img.filename;
+                    container.appendChild(imageEl);
+
+                    const likeBtn = document.createElement("button");
+                    likeBtn.textContent = `Like (${img.likes})`;
+                    likeBtn.onclick = () => {
+                        fetch(`/like/${img.filename}`, { method: "POST" })
+                        .then(res => res.json())
+                        .then(data => {
+                            likeBtn.textContent = `Like (${data.likes})`;
+                        });
+                    };
+                    container.appendChild(likeBtn);
+
+                    const commentList = document.createElement("div");
+                    commentList.className = "comments";
+                    img.comments.forEach(c => {
+                        const cEl = document.createElement("div");
+                        cEl.textContent = `${c.user}: ${c.text}`;
+                        commentList.appendChild(cEl);
+                    });
+                    container.appendChild(commentList);
+
+                    const commentForm = document.createElement("form");
+                    commentForm.className = "comment-form";
+                    commentForm.innerHTML = `
+                        <input type="text" name="user" placeholder="Your name" required>
+                        <input type="text" name="text" placeholder="Comment" required>
+                        <button type="submit">Add Comment</button>
+                    `;
+                    commentForm.onsubmit = (e) => {
+                        e.preventDefault();
+                        const formData = new FormData(commentForm);
+                        const body = { user: formData.get("user"), text: formData.get("text") };
+                        fetch(`/comment/${img.filename}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body)
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            commentList.innerHTML = "";
+                            data.comments.forEach(c => {
+                                const cEl = document.createElement("div");
+                                cEl.textContent = `${c.user}: ${c.text}`;
+                                commentList.appendChild(cEl);
+                            });
+                            commentForm.reset();
+                        });
+                    };
+                    container.appendChild(commentForm);
+
+                    gallery.appendChild(container);
+                });
+            });
+        }
+
+        loadGallery();
+             const fileInput = document.getElementById('fileInput');
+    const customBtn = document.getElementById('customBtn');
+    const fileNames = document.getElementById('fileNames');
+
+    // Open file selector when custom button is clicked
+    customBtn.addEventListener('click', () => fileInput.click());
+
+    // Show selected file names
+    fileInput.addEventListener('change', () => {
+        const files = Array.from(fileInput.files).map(f => f.name).join(', ');
+        fileNames.textContent = files || 'No file chosen';
+    });
+ 
+
+    </script>
+
+</body>
+</html>--->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Upload Site</title>
+    <style>
+        body {
+            background-color: whitesmoke;
+            font: 15px/1.5 Arial, helvetica, sans-serif;
+            padding: 0;
+            margin: 0;
+        }
+
+        .div-1 {
+            background-color: whitesmoke;
+            width: 100%;
+            height: 100px;
+            border-bottom: 0.5px solid grey;
+        }
+
+        .button-1, .button-2, .button-3, .button-4 {
+            border-radius: 10px;
+            border: 0.5px solid grey;
+            background: whitesmoke;
+            height: 50px;
+            padding: 10px;
+            margin-top: 30px;
+        }
+        .button-1 { width: 200px; margin-left: 40px; }
+        .button-2 { width: 200px; margin-left: 80px; }
+        .button-3 { width: 150px; margin-left: 400px; border-radius: 20px; }
+        .button-4 { width: 150px; margin-left: 50px; position: absolute; border-radius: 20px; }
+
+        .button {
+            border-radius: 20px;
+            height: 50px;
+            width: 100px;
+        }
+
+        .button-5{
+            width: 150px; border-radius: 10px;
+            border: 0.5px solid grey;
+            background: whitesmoke;
+            height: 50px;
+            padding: 10px;
+            margin-top: 30px;
+        }
+
+        /* Modern Instagram-like gallery styles */
+        #gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin: 20px;
+        }
+
+        .image-container {
+            background: white;
+            border: 0.5px solid grey;
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .image-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px rgba(0,0,0,0.2);
+        }
+
+        .image-container img {
+            width: 100%;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        .comments {
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .comments div {
+            margin-bottom: 3px;
+        }
+
+        .comment-form input {
+            margin-right: 5px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="div-1">
+        <a href="games.html"><button class="button-1">GAMES</button></a>
+        <button class="button-2">BUSINESS</button>
+        <button class="button-3">SIGN UP</button>
+        <button class="button-4">LOGIN</button>
+    </div>
+
+    <h2>Upload an Image</h2>
+    <div>
+        <form action="/upload" method="POST" enctype="multipart/form-data">
+            <input type="file" name="image"  class="button-5" multiple>
+            <button type="submit" class="button">Upload</button>
+        </form>
+    </div>
+
+    <h2>Uploaded Images</h2>
+    <div id="gallery"></div>
+
+    <script>
+        function loadGallery() {
+            fetch('/images')
+            .then(res => res.json())
+            .then(images => {
+                const gallery = document.getElementById("gallery");
+                gallery.innerHTML = ""; // Clear gallery first
+
+                images.forEach(img => {
+                    const container = document.createElement("div");
+                    container.className = "image-container";
+
+                    // Image
+                    const imageEl = document.createElement("img");
+                    imageEl.src = "/uploads/" + img.filename;
+                    container.appendChild(imageEl);
+
+                    // Like button
+                    const likeBtn = document.createElement("button");
+                    likeBtn.textContent = `Like (${img.likes})`;
+                    likeBtn.onclick = () => {
+                        fetch(`/like/${img.filename}`, { method: "POST" })
+                        .then(res => res.json())
+                        .then(data => {
+                            likeBtn.textContent = `Like (${data.likes})`;
+                        });
+                    };
+                    container.appendChild(likeBtn);
+
+                    // Comments
+                    const commentList = document.createElement("div");
+                    commentList.className = "comments";
+                    img.comments.forEach(c => {
+                        const cEl = document.createElement("div");
+                        cEl.textContent = `${c.user}: ${c.text}`;
+                        commentList.appendChild(cEl);
+                    });
+                    container.appendChild(commentList);
+
+                    // Comment form
+                    const commentForm = document.createElement("form");
+                    commentForm.className = "comment-form";
+                    commentForm.innerHTML = `
+                        <input type="text" name="user" placeholder="Your name" required>
+                        <input type="text" name="text" placeholder="Comment" required>
+                        <button type="submit">Add Comment</button>
+                    `;
+                    commentForm.onsubmit = (e) => {
+                        e.preventDefault();
+                        const formData = new FormData(commentForm);
+                        const body = {
+                            user: formData.get("user"),
+                            text: formData.get("text")
+                        };
+                        fetch(`/comment/${img.filename}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body)
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            commentList.innerHTML = "";
+                            data.comments.forEach(c => {
+                                const cEl = document.createElement("div");
+                                cEl.textContent = `${c.user}: ${c.text}`;
+                                commentList.appendChild(cEl);
+                            });
+                            commentForm.reset();
+                        });
+                    };
+                    container.appendChild(commentForm);
+
+                    gallery.appendChild(container);
+                });
+            });
+        }
+
+        // Load gallery on page load
+        loadGallery();
+    </script>
+
+</body>
+</html>
+--->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Upload Site</title>
+    <style>
+        body {
+            background-color: whitesmoke;
+            font: 15px/1.5 Arial, helvetica, sans-serif;
+            padding: 0;
+            margin: 0;
+        }
+        .button-1, .button-2, .button-3, .button-4 {
+            border-radius: 10px;
+            border: 0.5px solid grey;
+            background: whitesmoke;
+            height: 50px;
+            padding: 10px;
+            margin-top: 30px;
+        }
+        .button-1 { width: 200px; margin-left: 40px; }
+        .button-2 { width: 200px; margin-left: 80px; }
+        .button-3 { width: 150px; margin-left: 400px; border-radius:20px; }
+        .button-4 { width: 150px; margin-left: 50px; position: absolute; border-radius:20px; }
+
+        .div-1 {
+            background-color: whitesmoke;
+            width: 100%;
+            height: 100px;
+            border-bottom: 0.5px solid grey;
+        }
+
+        .button {
+            border-radius: 10px;
+            height: 50px;
+            width: 100px;
+        }
+
+        #gallery {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .image-container {
+            margin: 10px;
+            padding: 10px;
+            background: white;
+            border: 0.5px solid grey;
+            border-radius: 10px;
+        }
+
+        .image-container img {
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .image-container button {
+            margin-top: 5px;
+        }
+
+        .comments {
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .comments div {
+            margin-bottom: 3px;
+        }
+
+        .comment-form input {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="div-1">
+        <a href="games.html"><button class="button-1">GAMES</button></a>
+        <button class="button-2">BUSINESS</button>
+        <button class="button-3">SIGN UP</button>
+        <button class="button-4">LOGIN</button>
+    </div>
+
+    <h2>Upload an Image</h2>
+
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" required>
+        <button type="submit" class="button">Upload</button>
+    </form>
+
+    <h2>Uploaded Images</h2>
+    <div id="gallery"></div>
+
+    <script>
+        function loadGallery() {
+            fetch('/images')
+                .then(res => res.json())
+                .then(images => {
+                    const gallery = document.getElementById("gallery");
+                    gallery.innerHTML = "";
+
+                    images.forEach(img => {
+                        const container = document.createElement("div");
+                        container.className = "image-container";
+
+                        // Image
+                        const imageEl = document.createElement("img");
+                        imageEl.src = "/uploads/" + img.filename;
+                        imageEl.width = 200;
+                        container.appendChild(imageEl);
+
+                        // Like button
+                        const likeBtn = document.createElement("button");
+                        likeBtn.textContent = `Like (${img.likes})`;
+                        likeBtn.onclick = () => {
+                            fetch(`/like/${img.filename}`, { method: "POST" })
+                                .then(res => res.json())
+                                .then(data => {
+                                    likeBtn.textContent = `Like (${data.likes})`;
+                                });
+                        };
+                        container.appendChild(likeBtn);
+
+                        // Comments list
+                        const commentList = document.createElement("div");
+                        commentList.className = "comments";
+                        img.comments.forEach(c => {
+                            const cEl = document.createElement("div");
+                            cEl.textContent = `${c.user}: ${c.text}`;
+                            commentList.appendChild(cEl);
+                        });
+                        container.appendChild(commentList);
+
+                        // Comment form
+                        const commentForm = document.createElement("form");
+                        commentForm.className = "comment-form";
+                        commentForm.innerHTML = `
+                            <input type="text" name="user" placeholder="Your name" required>
+                            <input type="text" name="text" placeholder="Comment" required>
+                            <button type="submit">Add Comment</button>
+                        `;
+                        commentForm.onsubmit = (e) => {
+                            e.preventDefault();
+                            const formData = new FormData(commentForm);
+                            const body = {
+                                user: formData.get("user"),
+                                text: formData.get("text")
+                            };
+                            fetch(`/comment/${img.filename}`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(body)
+                            })
+                            .then(res => res.json())
+                            .then(data => {
+                                commentList.innerHTML = "";
+                                data.comments.forEach(c => {
+                                    const cEl = document.createElement("div");
+                                    cEl.textContent = `${c.user}: ${c.text}`;
+                                    commentList.appendChild(cEl);
+                                });
+                                commentForm.reset();
+                            });
+                        };
+                        container.appendChild(commentForm);
+
+                        gallery.appendChild(container);
+                    });
+                });
+        }
+
+        // Load gallery on page load
+        loadGallery();
+    </script>
+
+</body>
+</html>--->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Upload Site</title>
+    <style>
+        body {
+            background-color: whitesmoke;
+            font: 15px/1.5 Arial, Helvetica, sans-serif;
+            padding: 0;
+            margin: 0;
+        }
+
+        .header {
+            background-color: whitesmoke;
+            width: 100%;
+            height: 100px;
+            border-bottom: 0.5px solid grey;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .header button {
+            border-radius: 10px;
+            border: 0.5px solid grey;
+            background: whitesmoke;
+            height: 50px;
+            width: 150px;
+            margin-right: 20px;
+            cursor: pointer;
+        }
+
+        h2 {
+            margin-left: 20px;
+        }
+
+        form {
+            margin: 20px;
+        }
+
+        #gallery {
+            margin: 20px;
+        }
+
+        .image-container {
+            border: 1px solid #ccc;
+            margin: 10px;
+            padding: 10px;
+            display: inline-block;
+            vertical-align: top;
+        }
+
+        .image-container img {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .image-container button {
+            margin-bottom: 5px;
+        }
+
+        .image-container input {
+            margin: 2px 2px 2px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <button>GAMES</button>
+        <button>BUSINESS</button>
+        <button>SIGN UP</button>
+        <button>LOGIN</button>
+    </div>
+
+    <h2>Upload an Image</h2>
+
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" required>
+        <button type="submit">Upload</button>
+    </form>
+
+    <h2>Uploaded Images</h2>
+    <div id="gallery"></div>
+
+    <script>
+        function loadGallery() {
+            fetch('/images')
+            .then(res => res.json())
+            .then(images => {
+                const gallery = document.getElementById("gallery");
+                gallery.innerHTML = ""; // Clear existing gallery
+
+                images.forEach(img => {
+                    const container = document.createElement("div");
+                    container.className = "image-container";
+
+                    // Image
+                    const imageEl = document.createElement("img");
+                    imageEl.src = "/uploads/" + img.filename;
+                    imageEl.width = 200;
+                    container.appendChild(imageEl);
+
+                    // Like button
+                    const likeBtn = document.createElement("button");
+                    likeBtn.textContent = `Like (${img.likes})`;
+                    likeBtn.onclick = () => {
+                        fetch(`/like/${img.filename}`, { method: "POST" })
+                        .then(res => res.json())
+                        .then(data => {
+                            likeBtn.textContent = `Like (${data.likes})`;
+                        });
+                    };
+                    container.appendChild(likeBtn);
+
+                    // Comments list
+                    const commentList = document.createElement("div");
+                    img.comments.forEach(c => {
+                        const cEl = document.createElement("div");
+                        cEl.textContent = `${c.user}: ${c.text}`;
+                        commentList.appendChild(cEl);
+                    });
+                    container.appendChild(commentList);
+
+                    // Comment form
+                    const commentForm = document.createElement("form");
+                    commentForm.innerHTML = `
+                        <input type="text" name="user" placeholder="Your name" required>
+                        <input type="text" name="text" placeholder="Comment" required>
+                        <button type="submit">Add Comment</button>
+                    `;
+                    commentForm.onsubmit = (e) => {
+                        e.preventDefault();
+                        const formData = new FormData(commentForm);
+                        const body = {
+                            user: formData.get("user"),
+                            text: formData.get("text")
+                        };
+                        fetch(`/comment/${img.filename}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body)
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            commentList.innerHTML = "";
+                            data.comments.forEach(c => {
+                                const cEl = document.createElement("div");
+                                cEl.textContent = `${c.user}: ${c.text}`;
+                                commentList.appendChild(cEl);
+                            });
+                            commentForm.reset();
+                        });
+                    };
+                    container.appendChild(commentForm);
+
+                    gallery.appendChild(container);
+                });
+            });
+        }
+
+        // Initial load
+        loadGallery();
+    </script>
+</body>
+</html>-->
+
+<!---<!DOCTYPE html>
+<html>
+<head>
+    <title>Image Upload Site</title>
+    <style>
+        body {
+            background-color: whitesmoke;
+            font: 15px/1.5 Arial, helvetica, sans-serif;
+            padding: 0;
+            margin: 0;
+        }
+
+        .div-1 {
+            background-color: whitesmoke;
+            width: 100%;
+            height: 100px;
+            border-bottom: 0.5px solid grey;
+        }
+
+        .button-1, .button-2, .button-3, .button-4 {
+            border-radius: 10px;
+            border: 0.5px solid grey;
+            background: whitesmoke;
+            height: 50px;
+            padding: 10px;
+            margin-top: 30px;
+        }
+        .button-1 { width: 200px; margin-left: 40px; }
+        .button-2 { width: 200px; margin-left: 80px; }
+        .button-3 { width: 150px; margin-left: 400px; border-radius: 20px; }
+        .button-4 { width: 150px; margin-left: 50px; position: absolute; border-radius: 20px; }
+
+        .button {
+            border-radius: 20px;
+            height: 50px;
+            width: 100px;
+        }
+
+        #gallery {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .image-container {
+            margin: 10px;
+            padding: 10px;
+            background: white;
+            border: 0.5px solid grey;
+            border-radius: 10px;
+            width: 220px;
+        }
+
+        .image-container img {
+            display: block;
+            margin-bottom: 10px;
+            width: 200px;
+        }
+
+        .image-container button {
+            margin-bottom: 10px;
+        }
+
+        .comments {
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .comments div {
+            margin-bottom: 3px;
+        }
+
+        .comment-form input {
+            margin-right: 5px;
+        }
+        .button-5{
+            width: 150px; border-radius: 10px;
+            border: 0.5px solid grey;
+            background: whitesmoke;
+            height: 50px;
+            padding: 10px;
+            margin-top: 30px;
+
+
+        }
+    </style>
+</head>
+<body>
+
+    <div class="div-1">
+        <a href="games.html"><button class="button-1">GAMES</button></a>
+        <button class="button-2">BUSINESS</button>
+        <button class="button-3">SIGN UP</button>
+        <button class="button-4">LOGIN</button>
+    </div>
+
+    <h2>Upload an Image</h2>
+    <div>
+        
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="image"  class="button-5" multiple>
+        <button type="submit" class="button">Upload</button>
+        </form>
+    
+
+    <h2>Uploaded Images</h2>
+    <div id="gallery"></div>
+
+    <script>
+        function loadGallery() {
+            fetch('/images')
+            .then(res => res.json())
+            .then(images => {
+                const gallery = document.getElementById("gallery");
+                gallery.innerHTML = ""; // Clear gallery first
+
+                images.forEach(img => {
+                    const container = document.createElement("div");
+                    container.className = "image-container";
+
+                    // Image
+                    const imageEl = document.createElement("img");
+                    imageEl.src = "/uploads/" + img.filename;
+                    container.appendChild(imageEl);
+
+                    // Like button
+                    const likeBtn = document.createElement("button");
+                    likeBtn.textContent = `Like (${img.likes})`;
+                    likeBtn.onclick = () => {
+                        fetch(`/like/${img.filename}`, { method: "POST" })
+                        .then(res => res.json())
+                        .then(data => {
+                            likeBtn.textContent = `Like (${data.likes})`;
+                        });
+                    };
+                    container.appendChild(likeBtn);
+
+                    // Comments
+                    const commentList = document.createElement("div");
+                    commentList.className = "comments";
+                    img.comments.forEach(c => {
+                        const cEl = document.createElement("div");
+                        cEl.textContent = `${c.user}: ${c.text}`;
+                        commentList.appendChild(cEl);
+                    });
+                    container.appendChild(commentList);
+
+                    // Comment form
+                    const commentForm = document.createElement("form");
+                    commentForm.className = "comment-form";
+                    commentForm.innerHTML = `
+                        <input type="text" name="user" placeholder="Your name" required>
+                        <input type="text" name="text" placeholder="Comment" required>
+                        <button type="submit">Add Comment</button>
+                    `;
+                    commentForm.onsubmit = (e) => {
+                        e.preventDefault();
+                        const formData = new FormData(commentForm);
+                        const body = {
+                            user: formData.get("user"),
+                            text: formData.get("text")
+                        };
+                        fetch(`/comment/${img.filename}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body)
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            commentList.innerHTML = "";
+                            data.comments.forEach(c => {
+                                const cEl = document.createElement("div");
+                                cEl.textContent = `${c.user}: ${c.text}`;
+                                commentList.appendChild(cEl);
+                            });
+                            commentForm.reset();
+                        });
+                    };
+                    container.appendChild(commentForm);
+
+                    gallery.appendChild(container);
+                });
+            });
+        }
+
+        // Load gallery on page load
+        loadGallery();
+    </script>
+
+</body>
+</html>--->
+
+
+
+
+
+
+
+
+
+
+

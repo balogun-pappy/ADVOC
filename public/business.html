@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Business Page</title>
+<style>
+body { background:#f0f2f5; font-family:'Segoe UI', sans-serif; margin:0; padding:0; color:#333; }
+
+.navbar { background:#fff; display:flex; align-items:center; padding:10px 20px; border-bottom:1px solid #ddd; }
+.navbar input { flex:1; padding:8px; margin-left:10px; border-radius:20px; border:1px solid #ccc; }
+.navbar button { margin-left:10px; padding:10px 20px; border:none; border-radius:25px; cursor:pointer; background:#1877f2; color:#fff; }
+.navbar button:hover { background:#145dbf; }
+
+.upload-section { background:#fff; border-radius:10px; padding:40px; max-width:550px; margin:40px auto; box-shadow:0px 8px 16px rgba(0,0,0,0.2); text-align:center; }
+.upload-section input[type="file"], .upload-section input[type="text"] { margin-bottom:10px; padding:10px; border-radius:10px; border:1px solid #ccc; width:80%; }
+.upload-section button { border:none; border-radius:25px; padding:10px 20px; background:#42b72a; color:#fff; cursor:pointer; margin-top:10px; }
+.upload-section button:hover { background:#36921f; }
+
+.gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:20px; padding:20px; max-width:1200px; margin:auto; }
+.media-card { background:#fff; border-radius:15px; padding:15px; box-shadow:0 4px 12px rgba(0,0,0,0.1); position:relative; }
+.media-card img, .media-card video { width:100%; border-radius:15px; margin-bottom:10px; cursor:pointer; }
+
+.user-info { display:flex; align-items:center; margin-bottom:10px; cursor:pointer; }
+.user-info img { width:35px; height:35px; border-radius:50%; margin-right:10px; object-fit:cover; }
+
+.caption { font-weight:bold; margin-bottom:10px; }
+.like-btn { position:absolute; right:15px; bottom:60px; font-size:24px; cursor:pointer; color:#fff; text-shadow:0 0 5px #000; }
+.like-btn.liked { color:#ff2d55; transform:scale(1.3); }
+
+.comment-panel { position:fixed; bottom:-100%; left:0; width:100%; max-height:60%; background:#fff; border-top-left-radius:15px; border-top-right-radius:15px; transition:bottom 0.3s; overflow-y:auto; padding:20px; z-index:1000; }
+.comment-panel.active { bottom:0; }
+.comment-panel h3 { margin-top:0; }
+.comment-list div { margin-bottom:10px; }
+.comment-form input { padding:8px; border-radius:12px; border:1px solid #ddd; margin-right:5px; width:45%; }
+.comment-form button { border-radius:12px; border:none; padding:8px 12px; background:#1877f2; color:#fff; cursor:pointer; }
+
+/* DM panel */
+.dm-panel { position:fixed; right:20px; bottom:20px; width:300px; max-height:400px; background:#fff; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,0.2); display:flex; flex-direction:column; overflow:hidden; z-index:1000; }
+.dm-header { padding:10px; background:#1877f2; color:#fff; font-weight:bold; display:flex; justify-content:space-between; align-items:center; }
+.dm-messages { flex:1; padding:10px; overflow-y:auto; background:#f0f2f5; }
+.dm-input { display:flex; padding:10px; border-top:1px solid #ddd; }
+.dm-input input { flex:1; padding:5px 10px; border-radius:15px; border:1px solid #ccc; }
+.dm-input button { margin-left:5px; border:none; border-radius:15px; padding:5px 10px; background:#1877f2; color:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+    <a href="index.html"><button>GAMES</button></a>
+    <button>BUSINESS</button>
+   <a href="login.html"> <button>SIGN UP</button></a>
+    <a href="sign-up.html"><button>LOGIN</button></a>
+    <input type="text" id="searchBar" placeholder="Search images...">
+</div>
+
+<div class="upload-section">
+    <h2>Upload an Image</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="media" required>
+        <input type="text" name="caption" placeholder="Write something...">
+        <button type="submit">Upload</button>
+    </form>
+</div>
+
+<h2>Uploaded Images</h2>
+<div class="gallery" id="gallery"></div>
+
+
+
+
+
+<div class="comment-panel" id="commentPanel">
+    <h3>Comments <span id="commentCount">0</span></h3>
+    <div class="comment-list" id="commentList"></div>
+    <form class="comment-form" id="commentForm">
+        <input type="text" name="text" placeholder="Add a comment..." required>
+        <button type="submit">Send</button>
+        <button type="button" id="cancelComment">Cancel</button>
+    </form>
+</div>
+
+<div class="dm-panel" id="dmPanel" style="display:none;">
+    <div class="dm-header">
+        <span id="dmWith">DM</span>
+        <button id="closeDM">X</button>
+    </div>
+    <div class="dm-messages" id="dmMessages"></div>
+    <div class="dm-input">
+        <input type="text" id="dmInput" placeholder="Type a message">
+        <button id="sendDM">Send</button>
+    </div>
+</div>
+<!-- FULLSCREEN IMAGE VIEWER -->
+<div id="fullscreenViewer" style="
+    display:none;
+    position:fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    background:rgba(0,0,0,0.9);
+    justify-content:center;
+    align-items:center;
+    z-index:2000;
+">
+    <img id="fullscreenImg" style="max-width:90%; max-height:90%; border-radius:10px;">
+</div>
+
+
+<script>
+    
+function openImageFullscreen(img) {
+    const viewer = document.getElementById("fullscreenViewer");
+    const fullImg = document.getElementById("fullscreenImg");
+
+    fullImg.src = img.src;
+    viewer.style.display = "flex";
+}
+
+// Click anywhere to close fullscreen
+document.getElementById("fullscreenViewer").onclick = function () {
+    this.style.display = "none";
+};
+
+
+
+
+
+
+
+    
+let loggedInUser = null;
+let currentImage = '';
+let dmOpen = false;
+
+// Auth check
+fetch("/auth-check").then(res=>res.json()).then(data=>{ if(data.loggedIn) loggedInUser = data.username; loadGallery(); });
+
+// Load gallery
+function loadGallery(){
+    fetch("/business/images").then(res=>res.json()).then(images=>{
+        const gallery = document.getElementById("gallery");
+        gallery.innerHTML = "";
+        images.forEach(img=>{
+            const card = document.createElement("div");
+            card.className="media-card";
+
+            
+
+            // User info
+            const userDiv = document.createElement("div");
+            userDiv.className="user-info";
+            const profilePic = document.createElement("img");
+            profilePic.src="/profile_pics/"+(img.userProfile||"default.png");
+            const usernameSpan = document.createElement("span");
+            usernameSpan.textContent=img.user;
+            usernameSpan.onclick=()=>openProfile(img.user);
+            userDiv.appendChild(profilePic);
+            userDiv.appendChild(usernameSpan);
+            card.appendChild(userDiv);
+
+            // Media
+            const imageEl = document.createElement("img");
+            imageEl.src="/business_uploads/"+img.filename;
+            imageEl.onclick = ()=>openImageFullscreen(imageEl);
+
+            card.appendChild(imageEl);
+            // Comments button
+// Comment icon button 💬
+const commentBtn = document.createElement("button");
+commentBtn.innerHTML = "💬";
+commentBtn.style.fontSize = "22px";
+commentBtn.style.background = "none";
+commentBtn.style.border = "none";
+commentBtn.style.cursor = "pointer";
+commentBtn.style.marginBottom = "10px";
+
+commentBtn.onclick = () => openComments(img.filename);
+
+card.appendChild(commentBtn);
+
+
+
+            // Caption
+            if(img.caption){
+                const cap=document.createElement("p");
+                cap.className="caption";
+                cap.textContent=img.caption;
+                card.appendChild(cap);
+            }
+
+            // Like button
+            const likeBtn = document.createElement("div");
+            likeBtn.className="like-btn";
+            likeBtn.innerHTML = `❤ ${img.likes}`;
+            likeBtn.onclick = ()=>{
+                fetch(`/like/${img.filename}`, {method:"POST"}).then(res=>res.json()).then(data=>{
+                    likeBtn.innerHTML = `❤ ${data.likes}`;
+                    likeBtn.classList.add("liked");
+                    setTimeout(()=>likeBtn.classList.remove("liked"),300);
+                });
+            };
+            card.appendChild(likeBtn);
+
+            // DM button on each media
+            const dmBtn = document.createElement("button");
+            dmBtn.textContent = "DM";
+            dmBtn.onclick = ()=>openDM(img.user);
+            dmBtn.style.marginTop="5px";
+            card.appendChild(dmBtn);
+
+            gallery.appendChild(card);
+        });
+    });
+}
+
+// Open user profile
+function openProfile(user){
+    window.location.href="/profile.html?user="+user;
+}
+
+// Comments panel
+function openComments(filename){
+    currentImage = filename;
+    const panel = document.getElementById('commentPanel');
+    const list = document.getElementById('commentList');
+
+    // Load comments correctly
+    fetch(`/business/comments/${filename}`)
+    .then(res => res.json())
+    .then(comments => {
+        list.innerHTML = "";
+        comments.forEach(c => {
+            const div = document.createElement('div');
+            div.textContent = c.user + ": " + c.text;
+            list.appendChild(div);
+        });
+    });
+
+    panel.classList.add('active');
+}
+
+document.getElementById('commentForm').onsubmit = function(e){
+    e.preventDefault();
+    const body = { text: this.text.value };
+
+    // POST comment correctly
+    fetch(`/business/comments/${currentImage}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body)
+    })
+    .then(res => res.json())
+    .then(data => {
+        const list = document.getElementById('commentList');
+        list.innerHTML = "";
+        data.comments.forEach(c => {
+            const div = document.createElement('div');
+            div.textContent = c.user + ": " + c.text;
+            list.appendChild(div);
+        });
+        this.reset();
+    });
+};
+
+document.getElementById('cancelComment').onclick = () =>
+    document.getElementById('commentPanel').classList.remove('active');
+
+// DM panel
+const dmPanel = document.getElementById("dmPanel");
+const dmMessages = document.getElementById("dmMessages");
+function openDM(user){
+    if(!loggedInUser){ alert("Login to DM"); return; }
+    dmOpen=true;
+    dmPanel.style.display="flex";
+    document.getElementById("dmWith").textContent="DM with "+user;
+    loadDM(loggedInUser,user);
+}
+document.getElementById("closeDM").onclick = ()=>{ dmOpen=false; dmPanel.style.display="none"; };
+document.getElementById("sendDM").onclick = ()=>{
+    const msg=document.getElementById("dmInput").value.trim();
+    if(!msg) return;
+    const user=document.getElementById("dmWith").textContent.replace("DM with ","");
+    fetch(`/dm/${loggedInUser}/${user}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:msg})})
+    .then(res=>res.json()).then(data=>{
+        if(data.success){ document.getElementById("dmInput").value=""; loadDM(loggedInUser,user); }
+    });
+}
+function loadDM(user1,user2){
+    if(!dmOpen) return;
+    fetch(`/dm/${user1}/${user2}`).then(res=>res.json()).then(messages=>{
+        dmMessages.innerHTML="";
+        messages.forEach(m=>{
+            const div=document.createElement("div");
+            div.textContent=m.from+": "+m.message;
+            dmMessages.appendChild(div);
+        });
+        dmMessages.scrollTop=dmMessages.scrollHeight;
+    });
+}
+setInterval(()=>{ if(dmOpen){ const user=document.getElementById("dmWith").textContent.replace("DM with ",""); loadDM(loggedInUser,user); } }, 2000);
+
+// Upload business image
+document.getElementById("uploadForm").onsubmit=function(e){
+    e.preventDefault();
+    const formData=new FormData(this);
+    fetch("/business/upload",{method:"POST",body:formData})
+    .then(res=>res.json()).then(data=>{
+        if(data.success){ loadGallery(); this.reset(); }
+        else alert(data.message);
+    });
+};
+
+// Search
+document.getElementById("searchBar").addEventListener("input",function(){
+    const query=this.value.toLowerCase();
+    loadGallery();
+});
+</script>
+</body>
+</html>
+
+
+
+<!--
+i have many things to ask which include    
+  1 let the person sign up to have a name that willl show to upload a pic 2 
+  when signing in request for name to be identified on website 3 
+  i want to be able to upload multiple file at once 4 let it be like face book or whatsapp where 
+  who ever create an account on my website will have a profile and name for identifying whoever
+   drop the picture or video bu name and profile he or she used in signing in 5  and add that i
+    will or others will be able to message eachother privately within the website using the phone
+     number and name the person used while signing in like whats app or facebook  6  let it be that
+      when i tap on the person name it takes me to the persons profile like facebook or whasapp and
+       isee all the images or video
+ the person has uploaded and i am able to message the person within the website like facebook
+
+
+
+
+<script>
+    let currentImage = '';
+
+    function loadGallery() {
+        imageEl.src = "/business_uploads/" + img.filename;  // instead of "/uploads/"
+ 
+        .then(res => res.json())
+        .then(images => {
+            const gallery = document.getElementById("gallery");
+            gallery.innerHTML = "";
+
+            images.forEach(img => {
+                const container = document.createElement("div");
+                container.className = "image-container";
+
+                const imageEl = document.createElement("img");
+                imageEl.src = "/business_uploads/" + img.filename; // business uploads folder
+                container.appendChild(imageEl);
+
+                if (img.caption) {
+                    const cap = document.createElement("p");
+                    cap.className = "caption";
+                    cap.textContent = img.caption;
+                    container.appendChild(cap);
+                }
+
+                // Like button (TikTok heart)
+                const likeBtn = document.createElement("div");
+                likeBtn.className = "like-btn";
+                likeBtn.innerHTML = `&#10084; ${img.likes}`;
+                likeBtn.onclick = () => {
+                    fetch(`/like/${img.filename}`, { method: "POST" })
+                    .then(res => res.json())
+                    .then(data => {
+                        likeBtn.innerHTML = `&#10084; ${data.likes}`;
+                        likeBtn.classList.add('liked');
+                        setTimeout(() => likeBtn.classList.remove('liked'), 300);
+                    });
+                };
+                container.appendChild(likeBtn);
+
+                // Click image to open comments
+                imageEl.onclick = () => openComments(img.filename);
+
+                gallery.appendChild(container);
+            });
+        });
+    }
+
+    function openComments(filename) {
+        currentImage = filename;
+        const panel = document.getElementById('commentPanel');
+        const list = document.getElementById('commentList');
+
+        fetch(`/business/images`) // fetch business images for comments
+        .then(res => res.json())
+        .then(images => {
+            const img = images.find(i => i.filename === filename);
+            list.innerHTML = '';
+            img.comments.forEach(c => {
+                const div = document.createElement('div');
+                div.textContent = `${c.user}: ${c.text}`;
+                list.appendChild(div);
+            });
+        });
+
+        panel.classList.add('active');
+    }
+
+    // Comment form submission
+    document.getElementById('commentForm').onsubmit = function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const body = { user: formData.get('user'), text: formData.get('text') };
+
+        fetch(`/comment/${currentImage}`, { // comments shared route
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        })
+        .then(res => res.json())
+        .then(data => {
+            const list = document.getElementById('commentList');
+            list.innerHTML = '';
+            data.comments.forEach(c => {
+                const div = document.createElement('div');
+                div.textContent = `${c.user}: ${c.text}`;
+                list.appendChild(div);
+            });
+            document.getElementById('commentForm').reset();
+        });
+    };
+
+    // CANCEL BUTTON
+    const cancelBtn = document.getElementById('cancelComment');
+    cancelBtn.onclick = () => {
+        const panel = document.getElementById('commentPanel');
+        panel.classList.remove('active');
+    };
+
+    loadGallery();
+</script>-->

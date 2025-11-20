@@ -1,0 +1,18 @@
+{
+  "name": "package",
+  "version": "2.0.0",
+  "description": "A website where visitors can upload pictures and see all uploaded pictures",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "multer": "^2.0.2"
+  }
+}

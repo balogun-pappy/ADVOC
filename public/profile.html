@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile</title>
+<style>
+body { background:#f0f2f5; font-family:'Segoe UI', sans-serif; margin:0; padding:0; color:#333; }
+.navbar { background:#fff; display:flex; align-items:center; padding:10px 20px; border-bottom:1px solid #ddd; }
+.navbar input { flex:1; padding:8px; margin-left:10px; border-radius:20px; border:1px solid #ccc; }
+.navbar button { margin-left:10px; padding:10px 20px; border:none; border-radius:25px; cursor:pointer; background:#1877f2; color:#fff; }
+.navbar button:hover { background:#145dbf; }
+
+.profile-header { display:flex; align-items:center; justify-content:space-between; padding:20px; background:#fff; border-bottom:1px solid #ddd; }
+.profile-info { display:flex; align-items:center; }
+.profile-info img { width:80px; height:80px; border-radius:50%; margin-right:15px; object-fit:cover; cursor:pointer; }
+.profile-info div { display:flex; flex-direction:column; }
+.profile-info div span { font-size:1.2em; font-weight:bold; }
+.profile-buttons button { margin-left:10px; border:none; padding:10px 20px; border-radius:25px; cursor:pointer; background:#1877f2; color:#fff; }
+.profile-buttons button:hover { background:#145dbf; }
+
+.gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:20px; padding:20px; max-width:1200px; margin:auto; }
+.media-card { background:#fff; border-radius:15px; padding:15px; box-shadow:0 4px 12px rgba(0,0,0,0.1); position:relative; }
+.media-card img, .media-card video { width:100%; border-radius:15px; margin-bottom:10px; cursor:pointer; }
+.caption { font-weight:bold; margin-bottom:10px; }
+.like-btn { position:absolute; right:15px; bottom:60px; font-size:24px; cursor:pointer; color:#fff; text-shadow:0 0 5px #000; }
+.like-btn.liked { color:#ff2d55; transform:scale(1.3); }
+
+/* DM panel */
+.dm-panel { position:fixed; right:20px; bottom:20px; width:300px; max-height:400px; background:#fff; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,0.2); display:flex; flex-direction:column; overflow:hidden; z-index:1000; }
+.dm-header { padding:10px; background:#1877f2; color:#fff; font-weight:bold; display:flex; justify-content:space-between; align-items:center; }
+.dm-messages { flex:1; padding:10px; overflow-y:auto; background:#f0f2f5; }
+.dm-input { display:flex; padding:10px; border-top:1px solid #ddd; }
+.dm-input input { flex:1; padding:5px 10px; border-radius:15px; border:1px solid #ccc; }
+.dm-input button { margin-left:5px; border:none; border-radius:15px; padding:5px 10px; background:#1877f2; color:#fff; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+    <a href="index.html"><button>HOME</button></a>
+    <input type="text" id="searchBar" placeholder="Search...">
+</div>
+
+<div class="profile-header">
+    <div class="profile-info">
+        <img id="profilePic" src="/profile_pics/default.png" title="Click to change">
+        <div>
+            <span id="profileName">USERNAME</span>
+            <small id="followerCount">Followers: 0</small>
+        </div>
+    </div>
+    <div class="profile-buttons">
+        <button id="dmButton">Open DM</button>
+    </div>
+</div>
+
+<h2 style="text-align:center;">User Media</h2>
+<div class="gallery" id="gallery"></div>
+
+<!-- DM panel -->
+<div class="dm-panel" id="dmPanel" style="display:none;">
+    <div class="dm-header">
+        <span id="dmWith">DM</span>
+        <button id="closeDM">X</button>
+    </div>
+    <div class="dm-messages" id="dmMessages"></div>
+    <div class="dm-input">
+        <input type="text" id="dmInput" placeholder="Type a message">
+        <button id="sendDM">Send</button>
+    </div>
+</div>
+
+<input type="file" id="profilePicInput" style="display:none;">
+
+<script>
+let username = new URLSearchParams(window.location.search).get("user");
+let loggedInUser = null;
+let dmOpen = false;
+
+// Check auth
+fetch("/auth-check").then(res=>res.json()).then(data=>{
+    if(data.loggedIn) loggedInUser = data.username;
+    loadProfile();
+});
+
+function loadProfile(){
+    document.getElementById("profileName").textContent = username;
+
+    // Load profile pic
+    fetch(`/profile-pic/${username}`).then(res=>res.json()).then(data=>{
+        document.getElementById("profilePic").src = "/profile_pics/"+data.pic;
+    });
+
+    // Load user's media
+    fetch("/images").then(res=>res.json()).then(media=>{
+        const userMedia = media.filter(m => m.user === username);
+        const gallery = document.getElementById("gallery");
+        gallery.innerHTML = "";
+        userMedia.forEach(item=>{
+            const card = document.createElement("div");
+            card.className = "media-card";
+            if(item.type==="video"){
+                const vid = document.createElement("video");
+                vid.src="/uploads/"+item.filename;
+                vid.controls = true;
+                card.appendChild(vid);
+            }else{
+                const img = document.createElement("img");
+                img.src="/uploads/"+item.filename;
+                card.appendChild(img);
+            }
+            if(item.caption){
+                const cap = document.createElement("p");
+                cap.className="caption";
+                cap.textContent = item.caption;
+                card.appendChild(cap);
+            }
+            const likeBtn = document.createElement("div");
+            likeBtn.className="like-btn";
+            likeBtn.innerHTML = "❤ "+item.likes;
+            likeBtn.onclick = ()=>likeMedia(item.filename,likeBtn);
+            card.appendChild(likeBtn);
+            gallery.appendChild(card);
+        });
+    });
+}
+
+// Change profile pic
+document.getElementById("profilePic").onclick = ()=>{
+    if(loggedInUser === username) document.getElementById("profilePicInput").click();
+};
+document.getElementById("profilePicInput").onchange = function(){
+    const formData = new FormData();
+    formData.append("profilePic", this.files[0]);
+    fetch(`/profile-pic/${username}`, { method:"POST", body:formData })
+    .then(res=>res.json()).then(data=>{
+        if(data.success) document.getElementById("profilePic").src="/profile_pics/"+data.pic;
+    });
+};
+
+// Like
+function likeMedia(filename,btn){
+    fetch("/like/"+filename,{method:"POST"}).then(res=>res.json()).then(data=>{
+        btn.innerHTML="❤ "+data.likes;
+        btn.classList.add("liked");
+        setTimeout(()=>btn.classList.remove("liked"),300);
+    });
+}
+
+// DM functionality
+const dmPanel = document.getElementById("dmPanel");
+const dmMessages = document.getElementById("dmMessages");
+document.getElementById("dmButton").onclick = ()=>{
+    if(!loggedInUser){ alert("Login to DM"); return; }
+    dmOpen = true;
+    dmPanel.style.display = "flex";
+    document.getElementById("dmWith").textContent = "DM with "+username;
+    loadDM();
+};
+document.getElementById("closeDM").onclick = ()=>{ dmOpen=false; dmPanel.style.display="none"; };
+
+function loadDM(){
+    if(!dmOpen) return;
+    fetch(`/dm/${loggedInUser}/${username}`).then(res=>res.json()).then(messages=>{
+        dmMessages.innerHTML="";
+        messages.forEach(m=>{
+            const div = document.createElement("div");
+            div.textContent = m.from+": "+m.message;
+            dmMessages.appendChild(div);
+        });
+        dmMessages.scrollTop = dmMessages.scrollHeight;
+    });
+}
+document.getElementById("sendDM").onclick = ()=>{
+    const msg = document.getElementById("dmInput").value.trim();
+    if(!msg) return;
+    fetch(`/dm/${loggedInUser}/${username}`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({message:msg})
+    }).then(res=>res.json()).then(data=>{
+        if(data.success){
+            document.getElementById("dmInput").value="";
+            loadDM();
+        }
+    });
+};
+setInterval(()=>{ if(dmOpen) loadDM(); }, 2000);
+</script>
+</body>
+</html>
